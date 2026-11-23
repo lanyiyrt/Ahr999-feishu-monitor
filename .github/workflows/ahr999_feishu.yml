@@ -1,0 +1,43 @@
+name: Ahr999 Feishu Monitor
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+    - cron: "0 0 * * *"
+    - cron: "0 12 * * *"
+  workflow_dispatch:
+    inputs:
+      force_push:
+        description: "是否强制立即推送到飞书"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Restore state.json cache
+        uses: actions/cache@v4
+        with:
+          path: state.json
+          key: ahr999-state-${{ github.run_id }}
+          restore-keys: |
+            ahr999-state-
+
+      - name: Run Ahr999 Feishu Bot
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          FORCE_PUSH: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.force_push || 'true') || 'false' }}
+        run: python3 feishu_bot.py
