@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BTC Ahr999 实时监控看板 & 飞书告警预览</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card: #131a2a;
+      --border: #1e293b;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --green: #10b981;
+      --blue: #3b82f6;
+      --red: #ef4444;
+      --amber: #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 20px;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    header {
+      display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+      gap: 12px; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border);
+    }
+    header h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: 0.3px; }
+    .meta { display: flex; gap: 10px; align-items: center; font-size: 0.85rem; color: var(--muted); }
+    .btn {
+      background: #1e293b; color: var(--text); border: 1px solid #334155;
+      padding: 6px 14px; border-radius: 8px; cursor: pointer; font-size: 0.85rem;
+    }
+    .btn:hover { background: #334155; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 20px; }
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px;
+    }
+    .label { font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
+    .value { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .badge {
+      display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; margin-top: 6px;
+    }
+    .badge.green { background: rgba(16,185,129,0.15); color: var(--green); border: 1px solid rgba(16,185,129,0.4); }
+    .badge.blue { background: rgba(59,130,246,0.15); color: var(--blue); border: 1px solid rgba(59,130,246,0.4); }
+    .badge.red { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.4); }
+    .main-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 20px; }
+    @media (max-width: 900px) { .main-grid { grid-template-columns: 1fr; } }
+    .chart-wrap { position: relative; height: 340px; }
+    .sim-row { margin: 12px 0; }
+    input[type="range"] { width: 100%; accent-color: var(--blue); }
+    .input-num {
+      width: 100%; background: #0f172a; border: 1px solid #334155; color: var(--text);
+      padding: 8px 10px; border-radius: 8px; font-size: 0.95rem; margin-top: 6px;
+    }
+    .feishu-card {
+      background: #1a2234; border-radius: 10px; overflow: hidden; border: 1px solid #2d3a54; margin-top: 10px;
+    }
+    .feishu-header {
+      padding: 10px 14px; font-weight: 600; font-size: 0.92rem; color: #fff;
+    }
+    .feishu-header.green { background: #059669; }
+    .feishu-header.blue { background: #2563eb; }
+    .feishu-header.red { background: #dc2626; }
+    .feishu-body { padding: 12px 14px; font-size: 0.84rem; }
+    .feishu-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+    .feishu-field b { display: block; color: var(--muted); font-size: 0.75rem; }
+    .feishu-note { border-top: 1px solid #2d3a54; padding-top: 8px; font-size: 0.76rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>BTC Ahr999 实时监控看板</h1>
+        <div class="meta">
+          <span id="sourceTag">数据源: 加载中...</span>
+          <span>•</span>
+          <span id="updateTag">更新时间: --</span>
+        </div>
+      </div>
+      <button class="btn" onclick="loadLiveData()">立即刷新行情</button>
+    </header>
+
+    <section class="grid">
+      <div class="card">
+        <div class="label">实时 Ahr999 指数</div>
+        <div class="value" id="ahrVal">--</div>
+        <div id="zoneBadge" class="badge blue">加载中</div>
+      </div>
+      <div class="card">
+        <div class="label">BTC 现价 (USD)</div>
+        <div class="value" id="priceVal">--</div>
+        <div class="label" style="margin-top:6px;">阈值: ≤0.45 抄底 / ≥1.20 过热</div>
+      </div>
+      <div class="card">
+        <div class="label">200 日几何平均定投成本</div>
+        <div class="value" id="geoVal">--</div>
+        <div class="label" style="margin-top:6px;">近 200 日日线收盘几何均值</div>
+      </div>
+      <div class="card">
+        <div class="label">指数增长估值</div>
+        <div class="value" id="expVal">--</div>
+        <div class="label" style="margin-top:6px;" id="daysTag">创世天数: --</div>
+      </div>
+    </section>
+
+    <section class="main-grid">
+      <div class="card">
+        <div class="label" style="margin-bottom:10px;">近 200 日 Ahr999 走势与阈值参考线 (0.45 / 1.20)</div>
+        <div class="chart-wrap"><canvas id="ahrChart"></canvas></div>
+      </div>
+
+      <div class="card">
+        <div class="label">价格与告警模拟器</div>
+        <div class="sim-row">
+          <label class="label">模拟 BTC 价格 (USD)</label>
+          <input type="range" id="simSlider" min="15000" max="250000" step="100" oninput="syncSim(this.value)" />
+          <input type="number" id="simInput" class="input-num" oninput="syncSim(this.value)" />
+        </div>
+        <div class="sim-row" style="display:flex;justify-content:space-between;align-items:center;">
+          <span class="label">模拟 Ahr999: <strong id="simAhr" style="color:var(--text);">--</strong></span>
+          <button class="btn" onclick="resetSim()">重置为实时价</button>
+        </div>
+
+        <div class="label" style="margin-top:14px;">飞书交互式卡片预览</div>
+        <div class="feishu-card">
+          <div id="fcHeader" class="feishu-header blue">📊 BTC Ahr999 指数监控播报</div>
+          <div class="feishu-body">
+            <div class="feishu-fields">
+              <div class="feishu-field"><b>Ahr999 指数</b><span id="fcAhr">--</span></div>
+              <div class="feishu-field"><b>当前区间</b><span id="fcZone">--</span></div>
+              <div class="feishu-field"><b>BTC 现价</b><span id="fcPrice">--</span></div>
+              <div class="feishu-field"><b>200日定投成本</b><span id="fcGeo">--</span></div>
+              <div class="feishu-field"><b>指数增长估值</b><span id="fcExp">--</span></div>
+              <div class="feishu-field"><b>告警状态</b><span id="fcAlert">--</span></div>
+            </div>
+            <div class="feishu-note" id="fcNote">等待数据...</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const GENESIS_MS = Date.UTC(2009, 0, 3, 0, 0, 0);
+    let liveState = { price: 0, geoMean: 0, expVal: 0, source: "--", history: [] };
+    let chartInstance = null;
+
+    function loadChartJs(cb) {
+      if (window.Chart) return cb();
+      const s = document.createElement("script");
+      s.src = "https://" + "cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js";
+      s.onload = cb;
+      document.head.appendChild(s);
+    }
+
+    function calcExpVal(tsMs) {
+      const days = (tsMs - GENESIS_MS) / 86400000;
+      return { exp: Math.pow(10, 5.84 * Math.log10(days) - 17.01), days };
+    }
+
+    function calcGeoMean(arr) {
+      const sumLog = arr.reduce((acc, v) => acc + Math.log(v), 0);
+      return Math.exp(sumLog / arr.length);
+    }
+
+    async function fetchFromBinance() {
+      const hosts = ["data-api." + "binance.vision", "api." + "binance.com"];
+      for (const h of hosts) {
+        try {
+          const base = "https://" + h;
+          const [tRes, kRes] = await Promise.all([
+            fetch(base + "/api/v3/ticker/price?symbol=BTCUSDT"),
+            fetch(base + "/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=400")
+          ]);
+          if (!tRes.ok || !kRes.ok) continue;
+          const ticker = await tRes.json();
+          const klines = await kRes.json();
+          const price = parseFloat(ticker.price);
+          const closes = klines.map(k => ({ ts: k[0], close: parseFloat(k[4]) }));
+          return { price, closes, source: "Binance (" + h + ")" };
+        } catch (e) {}
+      }
+      throw new Error("Binance unavailable");
+    }
+
+    async function fetchFromCoinGecko() {
+      const cgBase = "https://" + "api.coingecko.com";
+      const res = await fetch(cgBase + "/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=400&interval=daily");
+      if (!res.ok) throw new Error("CoinGecko unavailable");
+      const data = await res.json();
+      const prices = data.prices || [];
+      const price = prices[prices.length - 1][1];
+      const closes = prices.map(p => ({ ts: p[0], close: p[1] }));
+      return { price, closes, source: "CoinGecko" };
+    }
+
+    async function loadLiveData() {
+      try {
+        let data;
+        try { data = await fetchFromBinance(); }
+        catch (_) { data = await fetchFromCoinGecko(); }
+
+        const allCloses = data.closes;
+        const recent200 = allCloses.slice(-200).map(x => x.close);
+        const geoMean = calcGeoMean(recent200);
+        const nowMs = Date.now();
+        const { exp, days } = calcExpVal(nowMs);
+        const ahr999 = (data.price / geoMean) * (data.price / exp);
+
+        const history = [];
+        for (let i = Math.max(199, allCloses.length - 200); i < allCloses.length; i++) {
+          const win = allCloses.slice(i - 199, i + 1).map(x => x.close);
+          if (win.length < 200) continue;
+          const g = calcGeoMean(win);
+          const { exp: e } = calcExpVal(allCloses[i].ts);
+          const a = (allCloses[i].close / g) * (allCloses[i].close / e);
+          const d = new Date(allCloses[i].ts);
+          history.push({ label: (d.getMonth() + 1) + "/" + d.getDate(), ahr: Number(a.toFixed(4)) });
+        }
+
+        liveState = { price: data.price, geoMean, expVal: exp, source: data.source, history, days };
+
+        document.getElementById("sourceTag").textContent = "数据源: " + data.source;
+        document.getElementById("updateTag").textContent = "更新时间: " + new Date().toLocaleTimeString("zh-CN");
+        document.getElementById("ahrVal").textContent = ahr999.toFixed(4);
+        document.getElementById("priceVal").textContent = "$" + data.price.toLocaleString("en-US", { maximumFractionDigits: 2 });
+        document.getElementById("geoVal").textContent = "$" + geoMean.toLocaleString("en-US", { maximumFractionDigits: 2 });
+        document.getElementById("expVal").textContent = "$" + exp.toLocaleString("en-US", { maximumFractionDigits: 2 });
+        document.getElementById("daysTag").textContent = "创世天数: " + Math.floor(days) + " 天";
+
+        const badge = document.getElementById("zoneBadge");
+        if (ahr999 <= 0.45) { badge.className = "badge green"; badge.textContent = "抄底区间 (≤ 0.45)"; }
+        else if (ahr999 < 1.20) { badge.className = "badge blue"; badge.textContent = "定投区间 (0.45 ~ 1.20)"; }
+        else { badge.className = "badge red"; badge.textContent = "观望/过热区间 (≥ 1.20)"; }
+
+        resetSim();
+        renderChart();
+      } catch (err) {
+        document.getElementById("sourceTag").textContent = "加载失败: " + err.message;
+      }
+    }
+
+    function syncSim(val) {
+      const p = parseFloat(val);
+      if (!p || !liveState.geoMean) return;
+      document.getElementById("simSlider").value = Math.min(250000, Math.max(15000, p));
+      document.getElementById("simInput").value = Math.round(p);
+      const ahr = (p / liveState.geoMean) * (p / liveState.expVal);
+      document.getElementById("simAhr").textContent = ahr.toFixed(4);
+      updateFeishuPreview(p, ahr);
+    }
+
+    function resetSim() {
+      if (liveState.price) syncSim(liveState.price);
+    }
+
+    function updateFeishuPreview(price, ahr) {
+      const header = document.getElementById("fcHeader");
+      let zone = "定投区间 (0.45 ~ 1.20)", cls = "blue", title = "📊 BTC Ahr999 指数监控播报", alertTxt = "正常定时播报";
+      if (ahr <= 0.45) {
+        zone = "抄底区间 (≤ 0.45)"; cls = "green";
+        title = "🟢 BTC Ahr999 抄底阈值告警 (≤ 0.45)"; alertTxt = "触发低于 0.45 抄底告警";
+      } else if (ahr >= 1.20) {
+        zone = "观望/过热区间 (≥ 1.20)"; cls = "red";
+        title = "🔴 BTC Ahr999 过热阈值告警 (≥ 1.20)"; alertTxt = "触发高于 1.20 过热告警";
+      }
+      header.className = "feishu-header " + cls;
+      header.textContent = title;
+      document.getElementById("fcAhr").textContent = ahr.toFixed(4);
+      document.getElementById("fcZone").textContent = zone;
+      document.getElementById("fcPrice").textContent = "$" + price.toLocaleString("en-US", { maximumFractionDigits: 2 });
+      document.getElementById("fcGeo").textContent = "$" + liveState.geoMean.toLocaleString("en-US", { maximumFractionDigits: 2 });
+      document.getElementById("fcExp").textContent = "$" + liveState.expVal.toLocaleString("en-US", { maximumFractionDigits: 2 });
+      document.getElementById("fcAlert").textContent = alertTxt;
+      document.getElementById("fcNote").textContent = "数据源: " + liveState.source + " | 60 分钟冷却去重保护";
+    }
+
+    function renderChart() {
+      loadChartJs(() => {
+        const ctx = document.getElementById("ahrChart").getContext("2d");
+        const labels = liveState.history.map(x => x.label);
+        const values = liveState.history.map(x => x.ahr);
+        const line045 = labels.map(() => 0.45);
+        const line120 = labels.map(() => 1.20);
+        if (chartInstance) chartInstance.destroy();
+        chartInstance = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels,
+            datasets: [
+              { label: "Ahr999", data: values, borderColor: "#3b82f6", backgroundColor: "rgba(59,130,246,0.12)", fill: true, tension: 0.25, pointRadius: 0 },
+              { label: "抄底线 (0.45)", data: line045, borderColor: "#10b981", borderDash: [6, 6], borderWidth: 1.5, pointRadius: 0 },
+              { label: "过热线 (1.20)", data: line120, borderColor: "#ef4444", borderDash: [6, 6], borderWidth: 1.5, pointRadius: 0 }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: "#cbd5e1" } } },
+            scales: {
+              x: { ticks: { color: "#64748b", maxTicksLimit: 10 }, grid: { color: "rgba(148,163,184,0.08)" } },
+              y: { ticks: { color: "#64748b" }, grid: { color: "rgba(148,163,184,0.08)" } }
+            }
+          }
+        });
+      });
+    }
+
+    loadLiveData();
+  </script>
+</body>
+</html>
